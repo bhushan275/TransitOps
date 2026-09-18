@@ -1,0 +1,193 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- ENUMS ----------
+
+enum Role {
+  FLEET_MANAGER
+  DRIVER
+  SAFETY_OFFICER
+  FINANCIAL_ANALYST
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ON_TRIP
+  IN_SHOP
+  RETIRED
+}
+
+enum DriverStatus {
+  AVAILABLE
+  ON_TRIP
+  OFF_DUTY
+  SUSPENDED
+}
+
+enum TripStatus {
+  DRAFT
+  DISPATCHED
+  COMPLETED
+  CANCELLED
+}
+
+enum ExpenseType {
+  TOLL
+  MAINTENANCE
+  OTHER
+}
+
+// ---------- MODELS ----------
+
+model User {
+  id            String             @id @default(uuid())
+  name          String
+  email         String             @unique
+  passwordHash  String
+  role          Role
+  driverId      String?            @unique // optional link: DRIVER-role accounts to a Driver profile
+  driver        Driver?            @relation(fields: [driverId], references: [id])
+  isActive      Boolean            @default(true)
+  safetyReviews TripSafetyReview[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model Vehicle {
+  id              String           @id @default(uuid())
+  registrationNo  String           @unique
+  name            String
+  type            String
+  region          String // required by dashboard filters
+  maxLoadCapacity Float // kg
+  odometer        Float            @default(0)
+  acquisitionCost Float
+  status          VehicleStatus    @default(AVAILABLE)
+  isActive        Boolean          @default(true) // soft delete instead of hard delete
+  trips           Trip[]
+  maintenanceLogs MaintenanceLog[]
+  fuelLogs        FuelLog[]
+  expenses        Expense[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([status])
+  @@index([region])
+}
+
+model Driver {
+  id                String       @id @default(uuid())
+  name              String
+  licenseNumber     String       @unique
+  licenseCategory   String
+  licenseExpiryDate DateTime
+  contactNumber     String
+  email             String? // optional
+  address           String? // optional
+  safetyScore       Float              @default(100)
+  status            DriverStatus       @default(AVAILABLE)
+  isActive          Boolean            @default(true) // soft delete
+  trips             Trip[]
+  userAccount       User?
+  safetyReviews     TripSafetyReview[]
+  expenses          Expense[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([status])
+  @@index([licenseExpiryDate])
+}
+
+model Trip {
+  id              String     @id @default(uuid())
+  tripNumber      String     @unique // e.g. "TRP-00001", business-friendly ID
+  source          String
+  destination     String
+  vehicleId       String
+  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id])
+  driverId        String
+  driver          Driver     @relation(fields: [driverId], references: [id])
+  cargoWeight     Float
+  plannedDistance Float
+  actualDistance  Float?
+  fuelConsumed    Float?
+  revenue         Float      @default(0) // required for ROI calc
+  status          TripStatus        @default(DRAFT)
+  dispatchedAt    DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  fuelLogs        FuelLog[]
+  safetyReview    TripSafetyReview?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([status])
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
+model MaintenanceLog {
+  id          String    @id @default(uuid())
+  vehicleId   String
+  vehicle     Vehicle   @relation(fields: [vehicleId], references: [id])
+  description String // e.g. "Oil Change"
+  cost        Float
+  isActive    Boolean   @default(true) // true = In Shop (open), false = closed
+  openedAt    DateTime  @default(now())
+  closedAt    DateTime?
+
+  @@index([vehicleId])
+  @@index([isActive])
+}
+
+model FuelLog {
+  id        String   @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
+  tripId    String? // optional link to a specific trip
+  trip      Trip?    @relation(fields: [tripId], references: [id])
+  liters    Float
+  cost      Float
+  date      DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([tripId])
+}
+
+model Expense {
+  id        String      @id @default(uuid())
+  vehicleId String
+  vehicle   Vehicle     @relation(fields: [vehicleId], references: [id])
+  driverId  String?
+  driver    Driver?     @relation(fields: [driverId], references: [id])
+  type      ExpenseType
+  amount    Float
+  date      DateTime    @default(now())
+  notes     String?
+
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([type])
+}
+
+model TripSafetyReview {
+  id         String   @id @default(uuid())
+  tripId     String   @unique
+  trip       Trip     @relation(fields: [tripId], references: [id])
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id])
+  reviewerId String
+  reviewer   User     @relation(fields: [reviewerId], references: [id])
+  rating     Int
+  remarks    String?
+  reviewedAt DateTime @default(now())
+
+  @@index([driverId])
+  @@index([reviewerId])
+}

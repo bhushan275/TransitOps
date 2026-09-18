@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: transitops_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: transitops
+      POSTGRES_PASSWORD: transitops
+      POSTGRES_DB: transitops_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - transitops_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transitops -d transitops_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  transitops_pgdata:
